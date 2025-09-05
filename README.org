@@ -1,0 +1,267 @@
+
+* Overview
+A collection of tools I've built to carry out various tasks with LLMs in emacs.
+The tools primarily provide ways of providing text as context to gptel.  I
+currently focus on extracting text from research manuscript pdfs and reading
+source code and function documentation within emacs.
+
+* Background
+The gptel tools thread (https://github.com/karthink/gptel/issues/514) describes tool use:q
+
+"'Tool use' or 'function calling' is LLM usage where
+
+    - You include a function specification along with your task/question to the LLM.
+    - The LLM optionally decides to call the function, and supplies the function call arguments.
+    - You run the function call, and (optionally) feed the results back to the LLM. gptel handles this automatically.
+    - The LLM completes the task based on the information received.
+
+You can use this to give the LLM awareness of the world, by providing access to
+APIs, your filesystem, web search, Emacs etc. You can get it to control your
+Emacs frame, for instance."
+
+* pdf Processing
+These functions extract the text from a pdf viewed in an emacs buffer.  They
+won't work on pdfs that don't have embedded text, e.g., document scans.  Presets
+allow the user to enter queries like "@websearch, find a web link to reference
+4."
+
+#+BEGIN_SRC emacs-lisp 
+(defun get-text-to-process ()
+  "Return the contents of the current pdf page as text."
+  (interactive)
+  (let ((current-buffer (current-buffer))
+        (current-window (selected-window))
+        (text-buffer)
+        (text-content))
+    (dolist (w (window-list))
+      (select-window w)
+      (when (eq major-mode 'pdf-view-mode)
+        (setq text-buffer (current-buffer)
+              text-content
+              (pdf-info-gettext
+               (pdf-view-current-page) '(0 0 1 1)))))
+    (select-window current-window)
+    (when (not (eq (current-buffer) current-buffer))
+      (switch-to-buffer current-buffer))
+    text-content))
+
+(gptel-make-tool
+ :function #'get-text-to-process
+ :name "process_supplied_text"
+ :description "use supplied text to answer a question"
+ :args nil
+ :category "knowledge")
+
+;; also give the preset the ability to
+;; do web searches, e.g., to get a PMID
+;; for a reference or additional details 
+(gptel-make-preset 'text-processor
+  :description  "use the text supplied to carry out the user's request"
+  :tools        '("process_supplied_text" "brave_search"))
+
+
+;; add the text from all pages of a pdf to gptel's context
+;; call with a prefix arg to specify a page range: 
+(defun add-pdf-text-to-gptel-context (arg)
+  "Return the entirety of the text you wish to process and add it to gptel's context.  With a prefix argument, set a range of pages to cover."
+  (interactive "P")
+  (let* ((current-page)
+         (last-page)
+         (current-buffer (current-buffer))
+         (current-window (selected-window))
+         (pdf-window)
+         (text-content)
+         (page-range))
+
+    ;; prefix arg supplied: specify a page
+    ;; range rather than the full pdf:
+    (when
+        (not (= (prefix-numeric-value arg) 1))
+      (setq page-range (list (read-number "start of page range: ")
+                             (read-number "end of page range: "))))
+
+    ;; find the pdf buffer:
+    (dolist (w (window-list))
+      (select-window w)
+      (when (eq major-mode 'pdf-view-mode)
+        (setq pdf-window (selected-window)
+              current-page (pdf-view-current-page)
+              last-page (progn (pdf-view-last-page)
+                               (pdf-view-current-page)))
+        (pdf-view-goto-page current-page))
+      )
+
+    ;; send the text to gptel:
+    (select-window pdf-window)
+    (dolist (n (if page-range
+                   (number-sequence (car page-range)
+                                    (car (cdr page-range)))
+                 (number-sequence 1 last-page)))
+      (pdf-view-goto-page n)
+      (setq text-content
+            (concat text-content
+                    (pdf-info-gettext
+                     (pdf-view-current-page) '(0 0 1 1)))))
+    (select-window pdf-window)
+    (pdf-view-goto-page current-page)
+    (select-window current-window)
+    (with-current-buffer (get-buffer-create "*text-processing*")
+      (delete-region (point-min) (point-max))
+      (insert text-content)
+      (gptel-context--add-region
+       (current-buffer) (point-min) (point-max) t))))
+
+#+END_SRC
+
+* Prompt From and Respond Through the Minibuffer
+This function prompts the user for a query and echoes a response through the
+minibuffer without having to call the gptel transient menu. 
+
+#+BEGIN_SRC emacs-lisp
+;; note: context added via gptel menu is not accessible using this command
+(defun gptel-send-prompt-to-echo-area ()
+  "Prompt for input, send to LLM, and display response in echo area."
+  (interactive)
+  (let ((prompt (read-string "Send to LLM: ")))
+    (gptel-request
+     prompt
+     :callback (lambda (response _info)
+                 (when (stringp response)
+                   (message "%s" response))))))
+#+END_SRC
+
+* Reading and Analyzing Source Code
+I use 'etags' to find source code definitions of functions and variables.  My
+tags files are set up with the following configuration:
+
+#+BEGIN_SRC bash
+## -----
+## setup:
+
+## make sure we have etags:
+which etags
+
+## make tags directory:
+mkdir -p ~/.emacs.d/TAGS
+touch ~/.emacs.d/TAGS/TAGS
+
+## -----
+## run etags program:
+cd  ~/.emacs.d/TAGS
+## see:
+## https://stackoverflow.com/questions/10738219/how-to-use-shell-magic-to-create-a-recursive-etags-using-gnu-etags
+find ~/.emacs.d/ -type f \( -name "*.el" -o -name "*.elc" -o -name "*.c" -o -name "*.h" \) -print | etags - -o TAGS
+#+END_SRC 
+
+With this setup, I use emacs built-in xref to find source code and provide it to
+gptel.  I have two functions: One provides only the function / variable of
+interest, while the other provides the entirety of the source code file for a
+given definition.  
+
+#+BEGIN_SRC emacs-lisp 
+(defun provide-gptel-symbol-definition (symbol)
+  "Get the documentation for 'symbol' (function or variable) via 'xref' and supply to the llm.  I use 'ivy-xref', which seems to simplify finding xrefs vs. the default, which splits the window and asks you to select among options."
+  (let ((current-buf (current-buffer))
+        (code-def)
+        (code-buf))
+    (if (or 
+         ;; more than 1 match
+         (< 1 (length
+               (xref-backend-definitions
+                (xref-find-backend) symbol)))
+         ;; no matches
+         (= 0 (length
+               (xref-backend-definitions
+                (xref-find-backend) symbol))))
+        (setq code-def "Multiple or no matches to symbol.  Can't provide code.")
+
+    (progn
+      (xref-find-definitions symbol)
+      (mark-defun)
+      (setq code-def (buffer-substring-no-properties
+                      (point) (mark))
+            code-buf (current-buffer))
+      (when (not (eq current-buf code-buf))
+        (kill-buffer code-buf))))
+
+    ;; return the source code or error message to gptel:
+    code-def
+      ))
+
+;; examples of testing this function:
+;; 1. built-in elisp function:
+(provide-gptel-symbol-definition "ivy-read")
+;; 2. built-in C function:
+(provide-gptel-symbol-definition "find-file")
+;; 3. function with multiple xref matches
+(provide-gptel-symbol-definition "ivy-avy")
+;; 4. function I wrote:
+(provide-gptel-symbol-definition "mac-pvs")
+;; 5. variable:
+(provide-gptel-symbol-definition "find-function-C-source-directory")
+
+(gptel-make-tool
+ :name "read_source_definition"
+ :function #'provide-gptel-symbol-definition
+ :description "Get a symbol's definition from source code"
+ :args (list '(:name "name"
+               :type string
+               :description "The name of the function or
+                             variable whose documentation
+                             is to be retrieved"))
+ :category "emacs")
+
+(defun provide-gptel-symbol-file (symbol)
+  "Locate the file that symbol is defined in, then extract the text from that file to provide to 'gptel'."
+  (let ((current-buf (current-buffer))
+         (code-file)
+         (code-content))
+
+    (if (or 
+         ;; more than 1 match
+         (< 1 (length
+               (xref-backend-definitions
+                (xref-find-backend) symbol)))
+         ;; no matches
+         (= 0 (length
+               (xref-backend-definitions
+                (xref-find-backend) symbol))))
+        (setq code-content "Multiple or no matches to symbol.
+                            Can't provide code.")
+
+      (progn
+        (setq code-file
+              (xref-location-group
+               (xref-item-location
+                (car (xref-backend-definitions
+                      (xref-find-backend) symbol))))
+              code-content (with-temp-buffer
+                             (insert-file-contents code-file)
+                             (buffer-string))
+              )))
+    code-content))
+
+;; examples of testing this function:
+;; 1. built-in elisp function:
+(provide-gptel-symbol-file "ivy-read")
+;; 2. built-in C function:
+(provide-gptel-symbol-file "find-file")
+;; 3. function with multiple xref matches
+(provide-gptel-symbol-file "ivy-avy")
+;; 4. function I wrote:
+(provide-gptel-symbol-file "mac-pvs")
+;; 5. variable:
+(provide-gptel-symbol-file "find-function-C-source-directory")
+
+(gptel-make-tool
+ :name "read_source_definition_full_file"
+ :function #'provide-gptel-symbol-file
+ :description "Get the full file that contains a symbol's definition."
+ :args (list '(:name "name"
+               :type string
+               :description "The name of the function or
+                             variable whose documentation
+                             is to be retrieved"))
+ :category "emacs")
+
+#+END_SRC
