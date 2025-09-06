@@ -265,3 +265,43 @@ given definition.
  :category "emacs")
 
 #+END_SRC
+
+* Reading R Documentation
+These functions use ESS (Emacs Speaks Statistics) help functionality to provide
+the documentation for R functions to gptel.  Note that the openai models (and
+likely others) can already access much of this information from the web.
+However, the tool seems to do a better job with less commonly used functions and
+functions from user-installed packages.   
+
+#+BEGIN_SRC emacs-lisp 
+(defun get-R-help-content-for-gptel (arg)
+  "Provide the documentation for an R object to 'gptel'."
+  (interactive)
+  (let ((R-content))
+    (when (bufferp "*R-documentation*")
+      (with-current-buffer (get-buffer "*R-documentation*")
+        (delete-region (point-min) (point-max)))
+      )
+    (with-current-buffer
+        (get-buffer-create "*R-documentation*")
+      (ess--flush-help-into-current-buffer arg nil)
+      (setq R-content (buffer-substring-no-properties
+                       (point-min) (point-max))))
+    R-content))
+
+(gptel-make-tool
+ :function #'get-R-help-content-for-gptel
+ :name "read_R_help_documentation"
+ :description "Read the help page for an R topic"
+ :args (list '(:name "function"
+                     :type string
+                     :description "The specific function you'd like help on"))
+ :category "R")
+
+(gptel-make-preset 'rreader
+  :description  "Use the R help pages to assist the user"
+  :tools        '("read_R_help_documentation"))
+
+;; test prompt:
+;; read the help page for the R function "xyplot" and provide a slightly altered version of one of the plot calls
+#+END_SRC
