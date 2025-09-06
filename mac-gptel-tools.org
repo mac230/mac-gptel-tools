@@ -287,6 +287,9 @@ functions from user-installed packages.
       (ess--flush-help-into-current-buffer arg nil)
       (setq R-content (buffer-substring-no-properties
                        (point-min) (point-max))))
+    (when (bufferp "*R-documentation*")
+      (kill-buffer (get-buffer "*R-documentation*"))
+      )
     R-content))
 
 (gptel-make-tool
