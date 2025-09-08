@@ -25,7 +25,7 @@ won't work on pdfs that don't have embedded text, e.g., document scans.  Presets
 allow the user to enter queries like "@websearch, find a web link to reference
 4."
 
-#+BEGIN_SRC emacs-lisp 
+#+BEGIN_SRC emacs-lisp :results silent 
 (defun get-text-to-process ()
   "Return the contents of the current pdf page as text."
   (interactive)
@@ -117,7 +117,7 @@ allow the user to enter queries like "@websearch, find a web link to reference
 This function prompts the user for a query and echoes a response through the
 minibuffer without having to call the gptel transient menu. 
 
-#+BEGIN_SRC emacs-lisp
+#+BEGIN_SRC emacs-lisp :results silent 
 ;; note: context added via gptel menu is not accessible using this command
 (defun gptel-send-prompt-to-echo-area ()
   "Prompt for input, send to LLM, and display response in echo area."
@@ -158,35 +158,59 @@ gptel.  I have two functions: One provides only the function / variable of
 interest, while the other provides the entirety of the source code file for a
 given definition.  
 
-#+BEGIN_SRC emacs-lisp 
+#+BEGIN_SRC emacs-lisp :results silent 
 (defun provide-gptel-symbol-definition (symbol)
   "Get the documentation for 'symbol' (function or variable) via 'xref' and supply to the llm.  I use 'ivy-xref', which seems to simplify finding xrefs vs. the default, which splits the window and asks you to select among options."
   (let ((current-buf (current-buffer))
         (code-def)
         (code-buf))
-    (if (or 
-         ;; more than 1 match
-         (< 1 (length
-               (xref-backend-definitions
-                (xref-find-backend) symbol)))
-         ;; no matches
-         (= 0 (length
-               (xref-backend-definitions
-                (xref-find-backend) symbol))))
-        (setq code-def "Multiple or no matches to symbol.  Can't provide code.")
 
-    (progn
-      (xref-find-definitions symbol)
-      (mark-defun)
-      (setq code-def (buffer-substring-no-properties
-                      (point) (mark))
-            code-buf (current-buffer))
-      (when (not (eq current-buf code-buf))
-        (kill-buffer code-buf))))
+    (cond
+     ;; no 'xref' matches to symbol:
+     ((= 0 (length
+            (xref-backend-definitions
+             (xref-find-backend) symbol)))
+      (setq code-def "Multiple matches to symbol.  Can't provide code."))
+     
+     ;; more than 1 'xref' match to symbol:
+     ((< 1 (length
+            (xref-backend-definitions
+             (xref-find-backend) symbol)))
+      (let* ((xrefs (xref-backend-definitions
+                     (xref-find-backend)
+                     symbol)))
+        (dolist (xr xrefs)
+          (let* ((location (xref-item-location xr))
+                 (marker (xref-location-marker location)))
+            (with-current-buffer (marker-buffer marker)
+              (save-excursion
+                (goto-char marker)
+                (mark-defun)
+                (setq code-def (concat
+                                "\n"
+                                code-def
+                                (buffer-substring-no-properties
+                                 (point) (mark))))))
+            (kill-buffer (marker-buffer marker))))))
+     
+     ;; single 'xref' match to symbol:
+     ((= 1 (length
+            (xref-backend-definitions
+             (xref-find-backend) symbol)))
+      (progn
+        (xref-find-definitions symbol)
+        (mark-defun)
+        (setq code-def (buffer-substring-no-properties
+                        (point) (mark))
+              code-buf (current-buffer))
+        (when (not (eq current-buf code-buf))
+          (kill-buffer code-buf))))
 
-    ;; return the source code or error message to gptel:
-    code-def
-      ))
+     ;; 'cond' contingency
+     (t
+      (message "Unknown error.")))
+    ;; provide code to gptel:
+    code-def))
 
 ;; examples of testing this function:
 ;; 1. built-in elisp function:
@@ -214,31 +238,35 @@ given definition.
 (defun provide-gptel-symbol-file (symbol)
   "Locate the file that symbol is defined in, then extract the text from that file to provide to 'gptel'."
   (let ((current-buf (current-buffer))
-         (code-file)
-         (code-content))
+        (code-file)
+        (code-content))
 
-    (if (or 
-         ;; more than 1 match
-         (< 1 (length
-               (xref-backend-definitions
-                (xref-find-backend) symbol)))
-         ;; no matches
-         (= 0 (length
-               (xref-backend-definitions
-                (xref-find-backend) symbol))))
-        (setq code-content "Multiple or no matches to symbol.
-                            Can't provide code.")
-
-      (progn
-        (setq code-file
-              (xref-location-group
-               (xref-item-location
-                (car (xref-backend-definitions
-                      (xref-find-backend) symbol))))
-              code-content (with-temp-buffer
-                             (insert-file-contents code-file)
-                             (buffer-string))
-              )))
+    (cond
+     ;; no 'xref' matches to symbol:
+     ((= 0 (length
+            (xref-backend-definitions
+             (xref-find-backend) symbol)))
+      (setq code-content "Multiple or no matches to symbol.
+                            Can't provide code."))
+     
+     ;; more than 'xref' 1 match to symbol:
+     ((< 0 (length
+            (xref-backend-definitions
+             (xref-find-backend) symbol)))
+      (let* ((xrefs (xref-backend-definitions
+                     (xref-find-backend)
+                     symbol)))
+        (dolist (xr xrefs)
+          (let* ((location (xref-item-location xr))
+                 (marker (xref-location-marker location)))
+            (with-current-buffer (marker-buffer marker)
+              (setq code-content (concat
+                              "\n"
+                              code-content
+                              (buffer-substring-no-properties
+                               (point-min) (point-max)))))
+          (kill-buffer (marker-buffer marker))))))
+     )
     code-content))
 
 ;; examples of testing this function:
@@ -263,7 +291,6 @@ given definition.
                              variable whose documentation
                              is to be retrieved"))
  :category "emacs")
-
 #+END_SRC
 
 * Reading R Documentation
@@ -273,7 +300,7 @@ likely others) can already access much of this information from the web.
 However, the tool seems to do a better job with less commonly used functions and
 functions from user-installed packages.   
 
-#+BEGIN_SRC emacs-lisp 
+#+BEGIN_SRC emacs-lisp :results silent 
 (defun get-R-help-content-for-gptel (arg)
   "Provide the documentation for an R object to 'gptel'."
   (interactive)
