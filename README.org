@@ -6,13 +6,16 @@ currently focus on extracting text from research manuscript pdfs and reading
 source code and function documentation within emacs.
 
 * Background
-The gptel tools thread (https://github.com/karthink/gptel/issues/514) describes tool use:q
+The gptel tools thread (https://github.com/karthink/gptel/issues/514) describes tool use:
 
 "'Tool use' or 'function calling' is LLM usage where
 
-    - You include a function specification along with your task/question to the LLM.
-    - The LLM optionally decides to call the function, and supplies the function call arguments.
-    - You run the function call, and (optionally) feed the results back to the LLM. gptel handles this automatically.
+    - You include a function specification along with your task/question to the
+      LLM.
+    - The LLM optionally decides to call the function, and supplies the function
+      call arguments.
+    - You run the function call, and (optionally) feed the results back to the
+      LLM. gptel handles this automatically.
     - The LLM completes the task based on the information received.
 
 You can use this to give the LLM awareness of the world, by providing access to
@@ -63,7 +66,8 @@ allow the user to enter queries like "@websearch, find a web link to reference
 ;; add the text from all pages of a pdf to gptel's context
 ;; call with a prefix arg to specify a page range: 
 (defun add-pdf-text-to-gptel-context (arg)
-  "Return the entirety of the text you wish to process and add it to gptel's context.  With a prefix argument, set a range of pages to cover."
+  "Return the entirety of the text you wish to process and add it to
+gptel's context.  With a prefix argument, set a range of pages to cover."
   (interactive "P")
   (let* ((current-page)
          (last-page)
@@ -119,7 +123,7 @@ minibuffer without having to call the gptel transient menu.
 
 #+BEGIN_SRC emacs-lisp :results silent 
 ;; note: context added via gptel menu is not accessible using this command
-(defun gptel-send-prompt-to-echo-area ()
+(defun gptel-send-prompt-to-minibuffer-echo-area ()
   "Prompt for input, send to LLM, and display response in echo area."
   (interactive)
   (let ((prompt (read-string "Send to LLM: ")))
@@ -334,4 +338,33 @@ functions from user-installed packages.
 
 ;; test prompt:
 ;; read the help page for the R function "xyplot" and provide a slightly altered version of one of the plot calls
+
+#+END_SRC
+
+* Switching Models
+#+BEGIN_SRC emacs-lisp 
+;; taken from: https://github.com/karthink/gptel/issues/1066
+(defun gptel-pick-model ()
+  "Pick the model for gptel to use for queries."
+  (interactive)
+  (let* ((all-models-list
+          (apply #'append
+                 (mapcar (lambda (backend-entry)
+                           (let ((name (car backend-entry))
+                                 (backend (cdr backend-entry)))
+                             (mapcar (lambda (model)
+                                       (cons (concat name ":" (gptel--model-name model))
+                                             (list backend model)))
+                                     (gptel-backend-models backend))))
+                         gptel--known-backends)))
+         (filtered-models (cl-remove-if #'null all-models-list))
+         (choice (completing-read "Model: " filtered-models nil t nil nil
+                                  (concat (gptel-backend-name gptel-backend) ":"
+                                          (gptel--model-name gptel-model)))))
+    (let ((backend-model (cdr (assoc choice filtered-models))))
+      (setq gptel-backend (car backend-model))
+      (setq gptel-model (cadr backend-model))
+      (message "Switched to %s model: %s"
+               (gptel-backend-name gptel-backend)
+               (gptel--model-name gptel-model)))))
 #+END_SRC
