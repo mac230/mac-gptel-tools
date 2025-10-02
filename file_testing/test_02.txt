@@ -1,0 +1,75 @@
+Chapter 3 | Derivatives
+Figure 3.17 For the car to move smoothly along the track, the
+function must be both continuous and differentiable.
+Solution
+For the function to be continuous at x = −10,
+lim
+x → −10−
+f (x) = f (−10). Thus, since
+lim
+x → 10−
+f (x) = 1 (−10) 2 − 10b + c = 10 − 10b + c
+10
+and f (−10) = 5, we must have 10 − 10b + c = 5. Equivalently, we have c = 10b − 5.
+For the function to be differentiable at −10,
+f ′ (10) =
+lim
+x → −10
+f (x) − f (−10)
+x + 10
+must exist. Since f (x) is defined using different rules on the right and the left, we must evaluate this limit from
+the right and the left and then set them equal to each other:
+lim −
+x → −10
+1
+2
+x + bx + c − 5
+f (x) − f (−10)
+= lim − 10
+x + 10
+x + 10
+x → −10
+=
+1 x 2 + bx + (10b − 5) − 5
+lim − 10
+x → −10
+x + 10
+2
+lim x − 100 + 10bx + 100b
+10(x + 10)
+x → −10−
+(x + 10)(x − 10 + 10b)
+= lim −
+10(x + 10)
+x → −10
+= b − 2.
+=
+Substitute c = 10b − 5.
+Factor by grouping.
+We also have
+− 14 x + 52 − 5
+f (x) − f (−10)
+= lim
+x + 10
+x + 10
+x → −10+
+x → −10+
+lim
+=
+−(x + 10)
+lim
+x → −10+ 4(x + 10)
+= − 1.
+4
+⎛ ⎞
+This gives us b − 2 = − 1 . Thus b = 7 and c = 10⎝7 ⎠ − 5 = 25 .
+4
+3.8
+4
+4
+2
+⎧ax + b if x < 3
+Find values of a and b that make f (x) = ⎨ 2
+both continuous and differentiable at 3.
+⎩ x if x ≥ 3
+This OpenStax book is available for free at http://cnx.org/content/col11964/1.12

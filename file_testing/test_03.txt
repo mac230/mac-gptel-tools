@@ -1,0 +1,21 @@
+(defun get-text-to-process ()
+  "Return the contents of the current pdf page as text."
+  (interactive)
+  (let ((current-buffer (current-buffer))
+        (current-window (selected-window))
+        (text-buffer)
+        (text-content))
+    (dolist (w (window-list))
+      (select-window w)
+      (when (eq major-mode 'pdf-view-mode)
+        (setq text-buffer (current-buffer)
+              text-content
+              (pdf-info-gettext
+               (pdf-view-current-page) '(0 0 1 1)))))
+    (select-window current-window)
+    (when (not (eq (current-buffer) current-buffer))
+      (switch-to-buffer current-buffer))
+    (insert text-content)))
+
+
+;; Mahlon Collins wrote this function

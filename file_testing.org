@@ -1,0 +1,67 @@
+The API for certain llm models will not accept files or specific file types.  In
+the context of gptel, a notable example the inability to send pdfs openai's
+models via the API (https://github.com/karthink/gptel/issues/1036).  I've found
+it's useful to have a test set of files to query whether file streaming (set via
+'gptel-track-media') is working with a specific model.  The following provides a
+series of files and prompts for this purpose:
+
+** Images
+| Model                                 | Status      |
+|---------------------------------------+-------------|
+| ChatGPT:gpt-4.1                       | works       |
+| mac-claude:claude-3-7-sonnet-20250219 | works       |
+| gemini:gemini-pro-latest              | not working |
+
+what's in this image (1 sentence, short answer):
+
+[[/home/mahlon/emacs/mac-gptel-tools/file_testing/test_01.png]]
+
+
+what's in this image (1 sentence, short answer):
+
+[[/home/mahlon/emacs/mac-gptel-tools/file_testing/test_02.png]]
+
+what's in this image (1 sentence, short answer):
+
+[[/home/mahlon/emacs/mac-gptel-tools/file_testing/test_03.png]]
+
+** pdfs
+| Model                                 | Status      |
+|---------------------------------------+-------------|
+| ChatGPT:gpt-4.1                       | not working |
+| mac-claude:claude-3-7-sonnet-20250219 | works       |
+| gemini:gemini-pro-latest              | not working |
+
+who are the authors (names only):
+
+[[/home/mahlon/emacs/mac-gptel-tools/file_testing/test_01.pdf]]
+
+what does figure 1 show (1 sentence, short answer):
+
+[[/home/mahlon/emacs/mac-gptel-tools/file_testing/test_02.pdf]]
+
+1 sentence summary of the last paragraph in the discussion:
+
+[[/home/mahlon/emacs/mac-gptel-tools/file_testing/test_03.pdf]]
+
+** txts
+| Model                                 | Status |
+|---------------------------------------+--------|
+| ChatGPT:gpt-4.1                       | works  |
+| mac-claude:claude-3-7-sonnet-20250219 | works  |
+| gemini:gemini-pro-latest              | works  |
+
+1 sentence summary of what the following file contains:
+
+[[/home/mahlon/emacs/mac-gptel-tools/file_testing/test_01.csv]]
+
+
+1 sentence summary of where the contents of this file came from:
+
+[[/home/mahlon/emacs/mac-gptel-tools/file_testing/test_02.txt]]
+
+
+1 sentence summary of the programming language in this file and who wrote it:
+
+[[/home/mahlon/emacs/mac-gptel-tools/file_testing/test_03.txt]]
+
