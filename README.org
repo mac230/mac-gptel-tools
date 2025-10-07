@@ -407,3 +407,34 @@ functions from user-installed packages.
   :description  "Help the user find buffers and headings that match a topic"
   :tools        '("get_org_buffer_and_heading"))
 #+END_SRC
+
+* Brave and Web Search
+#+BEGIN_SRC emacs-lisp :results silent
+(defvar brave-search-api-key (auth-source-pick-first-password :host "api.brave.com")
+  "API key for accessing the Brave Search API.")
+
+(defun brave-search-query (query)
+  "Perform a web search using the Brave Search API with the given QUERY."
+  (let ((url-request-method "GET")
+        (url-request-extra-headers `(("X-Subscription-Token" . ,brave-search-api-key)))
+        (url (format "https://api.search.brave.com/res/v1/web/search?q=%s" (url-encode-url query))))
+    (with-current-buffer (url-retrieve-synchronously url)
+      (goto-char (point-min))
+      (when (re-search-forward "^$" nil 'move)
+        (let ((json-object-type 'hash-table)) ; Use hash-table for JSON parsing
+          (json-parse-string (buffer-substring-no-properties (point) (point-max))))))))
+
+(gptel-make-tool
+ :name "brave_search"
+ :function #'brave-search-query
+ :name "brave_search"
+ :description "Perform a web search using the Brave Search API"
+ :args (list '(:name "query"
+               :type string
+               :description "The search query string"))
+ :category "web")
+
+(gptel-make-preset 'websearch
+  :description  "search the web with brave"
+  :tools        '("brave_search"))
+#+END_SRC
