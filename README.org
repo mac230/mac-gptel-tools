@@ -54,14 +54,12 @@ allow the user to enter queries like "@websearch, find a web link to reference
  :description "use supplied text to answer a question"
  :args nil
  :category "knowledge")
-
 ;; also give the preset the ability to
 ;; do web searches, e.g., to get a PMID
 ;; for a reference or additional details 
 (gptel-make-preset 'text-processor
   :description  "use the text supplied to carry out the user's request"
   :tools        '("process_supplied_text" "brave_search"))
-
 
 ;; add the text from all pages of a pdf to gptel's context
 ;; call with a prefix arg to specify a page range: 
@@ -338,11 +336,10 @@ functions from user-installed packages.
 
 ;; test prompt:
 ;; read the help page for the R function "xyplot" and provide a slightly altered version of one of the plot calls
-
 #+END_SRC
 
 * Switching Models
-#+BEGIN_SRC emacs-lisp 
+#+BEGIN_SRC emacs-lisp :results silent 
 ;; taken from: https://github.com/karthink/gptel/issues/1066
 (defun gptel-pick-model ()
   "Pick the model for gptel to use for queries."
@@ -367,4 +364,46 @@ functions from user-installed packages.
       (message "Switched to %s model: %s"
                (gptel-backend-name gptel-backend)
                (gptel--model-name gptel-model)))))
+#+END_SRC
+
+* org-mode
+#+BEGIN_SRC emacs-lisp 
+(defun gptel-goto-org-heading (query )
+  "Look through the list of org buffers and headings and return the best buffer / heading combination that matches the user's query."
+  (interactive)
+  (let ((entries)
+        (buffer-list)
+        (contents))
+    (dolist (b (buffer-list))
+      (with-current-buffer b
+        (when (and (derived-mode-p 'org-mode)
+                   (not (eq (buffer-name) "time.org")))
+          (setq entries
+                (nconc entries
+                       (counsel-outline-candidates
+                        (cdr (assq 'org-mode counsel-outline-settings))
+                        (counsel-org-goto-all--outline-path-prefix)))))))
+    (with-current-buffer (get-buffer-create "*buffers_markers*")
+      (delete-region (point-min) (point-max)))
+    (dolist (e entries)
+      (with-current-buffer (get-buffer "*buffers_markers*")
+        (setq contents (cons (nth 1 (string-split (car e) "/"))
+                             contents))))
+    (setq contents (reverse contents))
+    contents))
+
+
+(gptel-make-tool
+ :function #'gptel-goto-org-heading
+ :name "get_org_buffer_and_heading"
+ :description "Return the org buffer and heading
+               that best matches the user's query"
+ :args (list '(:name "query"
+               :type string
+               :description "The topic of the heading you're looking for"))
+ :category "org")
+
+(gptel-make-preset 'org-finder
+  :description  "Help the user find buffers and headings that match a topic"
+  :tools        '("get_org_buffer_and_heading"))
 #+END_SRC
