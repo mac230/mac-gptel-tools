@@ -61,9 +61,50 @@ allow the user to enter queries like "@websearch, find a web link to reference
   :description  "use the text supplied to carry out the user's request"
   :tools        '("process_supplied_text" "brave_search"))
 
+(defun gptel-add-current-pdf-page-text-to-context ()
+  "Add the text from a pdf's current page to gptel's context."
+  (interactive)
+  (let ((pdf-text (get-text-to-process)))
+    (with-current-buffer (get-buffer-create "*text-processing*")
+      (delete-region (point-min) (point-max))
+      (insert pdf-text)
+      (gptel-context--add-region
+       (current-buffer) (point-min) (point-max) t))
+    ))
+
+;; need to add osx equivalent to this 
+(defun gptel-add-current-pdf-page-image-to-context ()
+  "Add the text from a pdf's current page to gptel's context."
+  (interactive)
+  (let ((default-directory "~")
+        (window-config (window-configuration-to-register ?E))
+        (pdf-buffer))
+
+    (when (file-exists-p "/tmp/shot.png")
+      (async-shell-command "rm /tmp/shot.png" nil nil)
+      )
+
+    (dolist (w (window-list))
+      (with-current-buffer (window-buffer w)
+        (when (eq major-mode 'pdf-view-mode)
+          (setq pdf-buffer (current-buffer)))))
+
+    (if (not pdf-buffer)
+        (message "No pdf buffer detected.")
+      (progn
+        (switch-to-buffer pdf-buffer)
+        (delete-other-windows)
+        (start-process-shell-command "" nil
+         "/usr/bin/gnome-screenshot -w -f /tmp/shot.png")
+        (while (not (file-exists-p "/tmp/shot.png"))
+          (sit-for 0.1))
+        (gptel-context-add-file "/tmp/shot.png")
+        (jump-to-register ?E))
+        )))
+
 ;; add the text from all pages of a pdf to gptel's context
 ;; call with a prefix arg to specify a page range: 
-(defun add-pdf-text-to-gptel-context (arg)
+(defun gptel-add-all-pdf-text-to-context (arg)
   "Return the entirety of the text you wish to process and add it to
 gptel's context.  With a prefix argument, set a range of pages to cover."
   (interactive "P")
@@ -121,15 +162,20 @@ minibuffer without having to call the gptel transient menu.
 
 #+BEGIN_SRC emacs-lisp :results silent 
 ;; note: context added via gptel menu is not accessible using this command
-(defun gptel-send-prompt-to-minibuffer-echo-area ()
+(defun gptel-send-prompt-to-minibuffer-echo-area (arg)
   "Prompt for input, send to LLM, and display response in echo area."
-  (interactive)
-  (let ((prompt (read-string "Send to LLM: ")))
+  (interactive "P")
+  (let ((prompt (read-string "Send to LLM: "))
+        (val (prefix-numeric-value arg)))
     (gptel-request
      prompt
      :callback (lambda (response _info)
-                 (when (stringp response)
-                   (message "%s" response))))))
+                 (if (= val 1)
+                     (when (stringp response)
+                       (message "%s" response))
+                   (when (stringp response)
+                     (insert "%s" response))
+                   )))))
 #+END_SRC
 
 * Reading and Analyzing Source Code
@@ -368,44 +414,527 @@ functions from user-installed packages.
 
 * org-mode
 #+BEGIN_SRC emacs-lisp 
-(defun gptel-goto-org-heading (query )
+what's wrong with the following gptel function, tool, and preset definition:
+
+(defun gptel-add-buffers-headings-to-context ()
   "Look through the list of org buffers and headings and return the best buffer / heading combination that matches the user's query."
   (interactive)
   (let ((entries)
-        (buffer-list)
-        (contents))
-    (dolist (b (buffer-list))
+        (contents)
+        (buffers)
+        (headings))
+    ;; (dolist (b (nthcdr 100 (reverse (buffer-list))))
+    (dolist (b (mapcar
+                (lambda (arg) (get-buffer arg))
+                '(
+                  "r_notes.org"
+                  ;; "agenda.org"
+                  "latex_notes.org"
+                  ;; "shell_notes.org"
+)))
       (with-current-buffer b
         (when (and (derived-mode-p 'org-mode)
-                   (not (eq (buffer-name) "time.org")))
+                   (not (string= (buffer-name) "time.org")))
+                   ;; (and (string= (buffer-name) "r_notes.org")))
           (setq entries
                 (nconc entries
                        (counsel-outline-candidates
                         (cdr (assq 'org-mode counsel-outline-settings))
-                        (counsel-org-goto-all--outline-path-prefix)))))))
-    (with-current-buffer (get-buffer-create "*buffers_markers*")
-      (delete-region (point-min) (point-max)))
+                        (counsel-org-goto-all--outline-path-prefix))))))
     (dolist (e entries)
-      (with-current-buffer (get-buffer "*buffers_markers*")
-        (setq contents (cons (nth 1 (string-split (car e) "/"))
+        (setq contents (cons (substring-no-properties (car e))
                              contents))))
-    (setq contents (reverse contents))
-    contents))
+    (setq contents (reverse contents)
+          buffers (mapcar (lambda (b) (car (string-split b "/"))) contents)
+          headings (mapcar (lambda (b) (cadr (string-split b "/"))) contents))
+    (with-current-buffer (get-buffer-create "this_test")
+      (delete-region (point-min) (point-max))
+      (mapcar (lambda (c) (insert (concat c "\n"))) contents)
+      (mark-whole-buffer)
+      (gptel-context-add))
+    ))
 
+(defun gptel-switch-to-relevant-buffer-heading (buffer heading)
+  "Switch to the buffer relevant to the user's query."
+  (gptel-add-buffers-headings-to-context)
+  (sit-for 5)
+  (if (yes-or-no-p (concat "Switch to " buffer "? "))
+      (switch-to-buffer (get-buffer buffer))
+    (message (concat "not switching to" buffer ".")))
+  (if (yes-or-no-p (concat "Jump to " heading "? "))
+      (progn
+        (goto-char (point-min))
+        (re-search-forward heading nil t))
+    (message (concat "not jumping to" heading ".")))
+  (gptel-context-remove-all))
 
 (gptel-make-tool
- :function #'gptel-goto-org-heading
- :name "get_org_buffer_and_heading"
+ :function #'gptel-switch-to-relevant-buffer-heading
+ :name "2-get_org_buffer_and_switch_and_jump"
  :description "Return the org buffer and heading
-               that best matches the user's query"
- :args (list '(:name "query"
+               that best matches the user's query
+               using the information supplied as context."
+ :args (list '(:name "buffer"
                :type string
-               :description "The topic of the heading you're looking for"))
+               :description "The buffer with the information you're looking
+                             for.")
+             '(:name "heading"
+               :type string
+               :description "The heading you'd like to jump to."))
+
  :category "org")
 
-(gptel-make-preset 'org-finder
+(gptel-context-remove-all)
+
+help me find the buffer and heading that has information about my resume
+
+Looking at the context, I can see there's information about your resume in the LaTeX notes. Let me get that for you.I've retrieved and switched to the section "2025.01.14 - Code for My Resume" in the buffer "latex_notes.org". You should now be looking at the information about your resume code in LaTeX format.
+
+help me find my notes on reshaping data 
+
+I can help you find your notes on reshaping data. Based on the file listing, there appears to be an entry about using 'melt' to reshape data.This should bring up your notes on using the 'melt' function for reshaping data in R. This function is commonly used to transform data from wide format to long format, which is often needed for certain types of analysis or visualization.
+
+I can help you find information about your resume in the LaTeX notes. Based on the buffer listing, there appears to be a section specifically about resume code.This heading contains your resume code and has several subheadings covering different sections of your resume like Professional Experience, Professional Skills, Education, Publications, and more. The content should show how you've formatted these sections in LaTeX.
+
+The buffer that contains headings with information on bibliography files appears to be "latex_notes.org", which has several entries about .bib files, including:
+
+- latex_notes.org/2025.01.29 - Location of .bib Files on OSX for 'bibtex'
+- latex_notes.org/2025.02.03 - Location of .bib Files on Linux
+- latex_notes.org/2025.02.13 - Location of .bib Files on Home Synology NAS
+- latex_notes.org/2025.02.15 - Final Location of .bib Files on Either OSX Or Linux / Ubuntu / Fedora
+
+These entries specifically address bibliography file locations across different operating systems.
+
+2025.10.08 - maybe include switching as a yes-or-no-p question: if yes, switch, if no, send some message
+
+so if I add the list as context, it gets it right, but it can't add context on its own, i.e., adding context has to precede the tool call.....
+
+
+
+
+
+
+
+(gptel-make-preset
+    'org-finder-3
   :description  "Help the user find buffers and headings that match a topic"
   :tools        '("get_org_buffer_and_heading"))
+
+
+There are several issues and potential improvements with the code provided. Let's break them down:
+
+---
+
+### 1. The function `gptel-provide-buffers-headings`
+
+#### **Major issues:**
+
+- **Unused input:**  
+  The function is meant to match a user's query but it does not *receive* the query argument from the user or tool.  
+  - **Fix:** Add a `query` argument to the function:  
+    ```elisp
+    (defun gptel-provide-buffers-headings (query)
+      ...)
+    ```
+- **No output:**  
+  The function doesn't return anything (no `return` value, no message). GPTel expects functions to *return* a result, not just insert it into a buffer or add context.
+  - **Fix:** At the end, have the function return a string, list, or alist containing the relevant info.
+
+- **Context/addition misuse:**  
+  The function uses `gptel-context-add` at the end but doesn't do anything with the result.  
+  - If you want to supply context to a tool, do so in the preset or by using GPTel's API as written in its documentation.
+
+- **Dependency on Ivy/Counsel:**  
+  Not all users have `counsel-outline-candidates` or `counsel-org-goto-all--outline-path-prefix`. This limits portability.
+  - **Suggestion:** Use `org-map-entries` or the Org API for headings instead.
+
+#### **Minor issues:**
+
+- **Use of `mapcar` for side effects:**  
+  Use `dolist` or `mapc` for insertion, not `mapcar`.
+- **Buffer insertions for context:**  
+  It's better to build up a string and return it (or set as context as needed) than mess with buffers.
+
+#### **Corrected Skeleton Example:**
+
+```elisp
+(defun gptel-provide-buffers-headings (query)
+  "Return a list of org buffers/headings matching QUERY."
+  (let ((results '()))
+    (dolist (b (buffer-list))
+      (with-current-buffer b
+        (when (and (derived-mode-p 'org-mode)
+                   (not (string= (buffer-name) "time.org")))
+          (org-map-entries
+           (lambda ()
+             (let ((heading (org-get-heading t t t t)))
+               (when (string-match-p (regexp-quote query) heading)
+                 (push (list :buffer (buffer-name)
+                             :heading heading)
+                       results))))
+           nil 'file))))
+    (nreverse results)))
+```
+
+---
+
+### 2. The Tool Definition
+
+It's basically correct but:
+
+- The function must accept the argument list that GPTel supplies (`args`). So your function must expect *one* argument (the query).
+- The function must `return` something.
+
+---
+
+### 3. Preset Definition
+
+Syntax is fine, as long as the tool is properly defined.
+
+---
+
+## **Summary Table**
+
+| Problem          | Location         | Fix                                                                      |
+|------------------|-----------------|--------------------------------------------------------------------------|
+| No query param   | function        | Add (query) argument                                                     |
+| No return value  | function        | Return the found buffer/heading combination(s) as a list or string       |
+| Side-effect code | function        | Remove buffer insertions, use string/list for output                     |
+| Ivy/ counsel dep | function        | Use org-native code if possible                                          |
+| Tool interface   | tool definition | Make sure function arglist matches GPTel convention                      |
+
+---
+
+## **Example Minimalist Functional Setup**
+
+```elisp
+(defun gptel-provide-buffers-headings (query)
+  "Return a list of org buffers/headings matching QUERY."
+  (let ((results '()))
+    (dolist (b (buffer-list))
+      (with-current-buffer b
+        (when (derived-mode-p 'org-mode)
+          (org-map-entries
+           (lambda ()
+             (let ((heading (org-get-heading t t t t)))
+               (when (string-match-p (regexp-quote query) heading)
+                 (push (format "%s / %s" (buffer-name) heading) results))))
+           nil 'file))))
+    (string-join (nreverse results) "\n")))
+
+(gptel-make-tool
+ :function #'gptel-provide-buffers-headings
+ :name "get_org_buffer_and_heading"
+ :description "Return org buffer and heading(s) matching the query."
+ :args (list '(:name "query"
+               :type string
+               :description "The heading topic you're looking for."))
+ :category "org")
+
+(gptel-make-preset
+ 'org-finder-4
+  :description  "Help the user find buffers and headings that match a topic"
+  :tools        '("get_org_buffer_and_heading"))
+```
+
+
+---
+
+,**In summary:**  
+- Accept the query as function argument.
+- Return a value.
+- Avoid irrelevant context/buffer-insertion code.
+- Use `org-mode` APIs where possible.
+- Match function signature with your tool's declaration.
+
+@org-finder-4 which buffer heading combination is most likely contain notes removing packages in R with 'sapply'
+
+@org-finder-4 provide 4 examples of buffer heading combinations you obtained using your tools
+
+
+
+There are several issues with your code:
+
+1. The function `gptel-provide-buffers-headings` doesn't return anything. It's setting up context in a buffer named "this_test", but it doesn't actually return a result to the tool that calls it.
+
+2. The `string-split` function you're using assumes a specific format for the entries, but it's not clear if the entries from `counsel-outline-candidates` will always have that format.
+
+3. You're using `counsel-outline-candidates` and `counsel-org-goto-all--outline-path-prefix`, but these are not standard Emacs functions. They're from the counsel package, so your code assumes that package is loaded.
+
+4. The function is interactive, but when called by the tool, it will be called non-interactively and needs to accept the query parameter.
+
+Here's a corrected version:
+
+```elisp
+(defun gptel-provide-buffers-headings (query)
+  "Look through org buffers and headings that match QUERY."
+  (interactive "sQuery: ")
+  (require 'counsel nil t) ;; Make sure counsel is loaded
+  
+  (let ((entries)
+        (result))
+    ;; Collect org headings
+    (dolist (b (buffer-list))
+      (with-current-buffer b
+        (when (and (derived-mode-p 'org-mode)
+                   (not (string= (buffer-name) "time.org")))
+          (when (fboundp 'counsel-outline-candidates)
+            (setq entries
+                  (nconc entries
+                         (counsel-outline-candidates
+                          (cdr (assq 'org-mode counsel-outline-settings))
+                          (counsel-org-goto-all--outline-path-prefix))))))))
+    
+    ;; Process entries and create response
+    (setq entries 
+          (mapcar (lambda (e) (substring-no-properties (car e))) entries))
+    
+    ;; Return formatted result
+    (setq result (format "Based on your query '%s', these are the relevant org headings:\n\n%s"
+                        query
+                        (mapconcat 'identity entries "\n")))
+    
+    ;; Return the result string
+    result))
+```
+
+This revised function:
+1. Properly accepts the query parameter
+2. Returns a formatted string result
+3. Handles the case where counsel might not be loaded
+4. Simplifies the processing of entries
+
+Your tool and preset definitions look correct, but they depend on this function working properly.
+
+
+
+here is a gptel function and tool definition:
+
+(defun gptel-read-documentation (symbol)
+  "Read the documentation for SYMBOL, which can be a function or variable."
+  (let ((sym (intern symbol)))
+    (cond
+     ((fboundp sym)
+      (documentation sym))
+     ((boundp sym)
+      (documentation-property sym 'variable-documentation))
+     (t
+      (format "No documentation found for %s" symbol)))))
+
+(gptel-make-tool
+ :name "read_documentation"
+ :function #'gptel-read-documentation
+ :description "Read the documentation for a given function or variable"
+ :args (list '(:name "name"
+               :type string
+               :description "The name of the function or variable whose documentation is to be retrieved"))
+ :category "emacs")
+
+I have a function that returns a list of buffers and org-mode headings, like the following: "README.org/Background" where the buffer is "README.org" and the heading is "Background".  help me write a gptel tool that allows an llm to select a buffer and heading from this large list based on my query and switch to that buffer then jump to the heading.  so, for example, the list of buffers headings may contain 100 entries and I'd like the one that's most likely to contain notes on a recipe for hummus.  I won't be able to specify the exact heading - I want the llm to pick one based on my query
+
+
+I'll help you write a gptel tool that allows an LLM to select a buffer and heading based on your query. Let me create a function and the corresponding tool definition for this purpose.
+
+First, we need a function that:
+1. Takes a query and a list of buffer/heading combinations
+2. Lets the LLM select the most relevant entry
+3. Switches to the buffer and jumps to the heading
+
+Here's my proposed implementation:
+
+```elisp
+(defun gptel-find-relevant-heading (query buffer-heading-list)
+  "Find and jump to a relevant buffer and heading based on QUERY.
+BUFFER-HEADING-LIST is a list of strings in the format 'buffer/heading'."
+  (let* ((selected (gptel--select-most-relevant query buffer-heading-list))
+         (parts (split-string selected "/" t))
+         (buffer-name (car parts))
+         (heading (cadr parts)))
+    (if (and buffer-name heading)
+        (progn
+          (switch-to-buffer buffer-name)
+          (org-goto-marker-or-bmk heading)
+          (format "Switched to buffer '%s' at heading '%s'" buffer-name heading))
+      (format "Could not parse the selected item: %s" selected))))
+
+(defun gptel--select-most-relevant (query items)
+  "Select the most relevant item from ITEMS based on QUERY.
+This function would typically call the LLM to make the selection,
+but for now it's a placeholder that would be implemented to use 
+the current active LLM to evaluate options."
+  ;; This would actually use the LLM to make a selection,
+  ;; For demonstration, we're just showing the structure
+  (if items
+      (car items) ; This would be replaced with actual LLM-based selection
+    nil))
+```
+
+Now, let's define the gptel tool:
+
+```elisp
+(gptel-make-tool
+ :name "find_relevant_heading"
+ :function #'gptel-find-relevant-heading
+ :description "Find and navigate to the most relevant buffer and heading based on a search query"
+ :args (list '(:name "query"
+               :type string
+               :description "The search query to match against buffer and heading content")
+              '(:name "buffer_heading_list"
+                :type list
+                :description "List of buffer/heading combinations to search through"))
+ :category "emacs")
+```
+
+However, there's something important to note: the current approach assumes the LLM can directly choose from the list, but this isn't how tools typically work. The LLM doesn't directly evaluate the list - instead, we need to have the Emacs-side code do the actual searching and ranking.
+
+A better approach would be to:
+
+1. Have a function that retrieves all buffer/heading combinations
+2. Create another function that performs semantic matching against your query
+3. Make this available as a tool that takes only the query
+
+Would you like me to refine this approach further to make it more practical?
+
+Certainly! Here’s an outline and implementation suggestion for a `gptel-make-tool` Emacs function to achieve your goal:
+
+## **Concept**
+
+- **Input**: Natural language query (e.g., "notes on a recipe for hummus") and list of buffer/heading entries (e.g., `("README.org/Background" "Journal.org/Daily Log" ...)`)
+- **Logic**:
+  1. The tool should use the LLM to select the entry (buffer/heading) most relevant to the query.
+  2. When an entry is selected, switch to that buffer and jump to that heading.
+- **Action**: Use Emacs's buffer and Org navigation facilities (`switch-to-buffer`, `org-find-heading`, etc.)
+
+## **Code Example**
+
+Below is a gptel tool definition. For simplicity, the LLM scores/selects a candidate from the list. The tool then performs the navigation:
+
+```emacs-lisp
+(defun my/switch-to-buffer-heading (buffer-heading)
+  "Switch to BUFFER and jump to org-mode HEADING."
+  (let* ((parts (split-string buffer-heading "/"))
+         (buffer (car parts))
+         (heading (mapconcat 'identity (cdr parts) "/")))
+    (if (get-buffer buffer)
+        (progn
+          (switch-to-buffer buffer)
+          (when (derived-mode-p 'org-mode)
+            (goto-char (point-min))
+            (if (re-search-forward (concat org-heading-regexp " " (regexp-quote heading)) nil t)
+                (org-show-entry)
+              (message "Heading not found: %s" heading))))
+      (message "Buffer not found: %s" buffer))))
+
+(gptel-make-tool
+ :name "switch_to_relevant_buffer_heading"
+ :function
+ (lambda (query buffer-headings)
+   "Given QUERY and BUFFER-HEADINGS, select the best entry and switch/jump to it."
+   (let* ((selected
+           ;; Replace below by LLM-assisted selection:
+           (car (sort buffer-headings
+                      (lambda (a b)
+                        ;; For demo: crude string matching.
+                        (> (score-string-matching a query)
+                           (score-string-matching b query)))))))
+     (my/switch-to-buffer-heading selected)
+     selected))
+ :description "Given a query and a list of buffer/headings like 'README.org/Background', use the LLM to select the most relevant entry and jump to it."
+ :args (list
+         '(:name "query"
+                 :type string
+                 :description "Natural language description of what you want, e.g., 'notes on hummus'")
+         '(:name "buffer_headings"
+                 :type (vector string)
+                 :description "List of buffer-name/heading candidates, e.g., [\"README.org/Background\" ...]"))
+ :category "navigation")
+
+
+,**Notes:**
+- The tool takes a `query` and `buffer_headings` as arguments.
+- The LLM must choose from `buffer_headings` the best match for `query`, and return/jump to it.
+- You may want to integrate the candidate selection tightly with the LLM by passing the candidate list and query as context.
+- You can expand `my/switch-to-buffer-heading` as needed (e.g., handle cases when buffers are not open, use `find-file` if missing, resolve fuzzy matches, etc.).
+
+### **gptel Tool Prompting**
+When invoked, the LLM will decide on the best entry to select for your query.
+
+---
+
+Let me know if you want the LLM selection logic more formalized, or integration with code that scores candidates!
+I'll help you create a gptel tool that allows an LLM to select a buffer and heading from a list and navigate to it. Let's break this down:
+
+1. You need a function that takes a buffer/heading combination like "README.org/Background"
+2. The function should parse this string to separate buffer and heading
+3. It should switch to the buffer and jump to the heading
+4. Then wrap this in a gptel-make-tool definition
+
+Here's a possible implementation.
+
+```emacs-lisp
+(defun gptel-switch-to-heading (bufhead)
+  "Switch to buffer and go to heading defined in BUFHEAD.
+BUFHEAD is a string in the format BUFFER/HEADING."
+  (let* ((parts (split-string bufhead "/"))
+         (buffer-name (car parts))
+         (heading-name (cadr parts)))
+    (switch-to-buffer buffer-name)
+    (org-find-exact-headline-in-buffer heading-name)))
+
+(gptel-make-tool
+ :name "switch_to_heading"
+ :function #'gptel-switch-to-heading
+ :description "Switch to a buffer and jump to a specific Org mode heading."
+ :args '((:name "buffer_and_heading"
+          :type "string"
+          :description "The buffer and heading in the format 'BUFFER/HEADING'"))
+ :category "emacs")
+```
+
+This code defines `gptel-switch-to-heading` to handle the buffer switching and heading navigation logic. It then creates a gptel tool named "switch_to_heading" that exposes this functionality to the LLM. The LLM can then provide a string like "my_notes.org/Project Ideas" to this tool, and Emacs will automatically open `my_notes.org` and jump to the "Project Ideas" heading.
+
+
+Certainly! To create a `gptel` tool that allows an LLM to select a buffer and heading from a list (e.g., `"README.org/Background"`) and jump to it, you'll need:
+
+1. A function that receives the `buffer` and `heading`, switches to the buffer, and jumps to the heading.
+2. A `gptel-make-tool` definition.
+
+Here’s a full example for you:
+
+```elisp
+(defun gptel-switch-to-buffer-heading (buffer+heading)
+  "Switch to BUFFER and jump to HEADING in Org mode.
+BUFFER+HEADING should be a string like \"BUFFER/HEADING\"."
+  (let* ((parts (split-string buffer+heading "/"))
+         (buffer (car parts))
+         (heading (mapconcat #'identity (cdr parts) "/"))) ;; In case heading has /
+    (if (get-buffer buffer)
+        (progn
+          (switch-to-buffer buffer)
+          (when (derived-mode-p 'org-mode)
+            (goto-char (point-min))
+            (if (re-search-forward (format org-complex-heading-regexp-format (regexp-quote heading)) nil t)
+                (beginning-of-line)
+              (message "Heading not found: %s" heading)))
+          (format "Switched to %s and jumped to heading: %s" buffer heading))
+      (format "Buffer not found: %s" buffer))))
+
+(gptel-make-tool
+ :name "switch_to_buffer_heading"
+ :function #'gptel-switch-to-buffer-heading
+ :description "Switch to the specified buffer and jump to the org-mode heading. Input as \"BUFFER/HEADING\"."
+ :args (list '(:name "buffer_heading"
+               :type string
+               :description "Concatenated buffer and heading (e.g., \"README.org/Background\")"))
+ :category "navigation")
+```
+
+### Notes:
+- This assumes the buffer is already open and in Org mode.
+- The heading search is robust to headings with slashes (e.g., `"Section/Subsection"`).
+- The tool takes a single string argument like `"README.org/Background"`.
+
+,**To use**: The LLM can call the `switch_to_buffer_heading` tool with a value like `"MyFile.org/Heading2"` to jump to `Heading2` in the buffer `MyFile.org`.
 #+END_SRC
 
 * Brave and Web Search
@@ -437,4 +966,110 @@ functions from user-installed packages.
 (gptel-make-preset 'websearch
   :description  "search the web with brave"
   :tools        '("brave_search"))
+#+END_SRC
+
+* Email
+#+BEGIN_SRC emacs-lisp 
+(with-current-buffer (get-buffer-create "test")
+  (delete-region (point-min) (point-max))
+  (maphash (lambda (key val)
+             (insert key))
+           mu4e~contacts)
+  (gptel-context--add-region
+   (current-buffer) (point-min) (point-max) t))
+
+(defun gptel-compose-email (address message)
+  "Switch to the buffer relevant to the user's query."
+  (progn
+    (mu4e-context-switch t "proton - mac230@mahlon.net")
+    (mu4e-compose-new))
+  (if (yes-or-no-p (concat "Switch to " buffer "? "))
+      (switch-to-buffer (get-buffer buffer))
+    (message (concat "not switching to" buffer ".")))
+  (if (yes-or-no-p (concat "Jump to " heading "? "))
+      (progn
+        (goto-char (point-min))
+        (re-search-forward heading nil t))
+    (message (concat "not jumping to" heading ".")))
+  (gptel-context-remove-all))
+
+(gptel-make-tool
+ :function #'gptel-switch-to-relevant-buffer-heading
+ :name "2-get_org_buffer_and_switch_and_jump"
+ :description "Return the org buffer and heading
+               that best matches the user's query
+               using the information supplied as context."
+ :args (list '(:name "buffer"
+               :type string
+               :description "The buffer with the information you're looking
+                             for.")
+             '(:name "heading"
+               :type string
+               :description "The heading you'd like to jump to."))
+
+ :category "org")
+#+END_SRC
+
+* Debugging
+** Processing pdfs Not Working / Supported
+https://github.com/karthink/gptel/issues/756
+
+I've had issues with certain models not send pdf content to models.  The github
+issue above has code that can diagnose why this is happening at the level of
+individual models:
+
+#+BEGIN_SRC emacs-lisp :results silent 
+
+;; what are the model's capabilities (need media):
+(gptel--model-capabilities 'gemini-pro-latest)
+(gptel--model-capabilities 'claude-3-7-sonnet-20250219)
+(gptel--model-capabilities 'gpt-4.1)
+;; (media tool-use json url)
+
+;; what file types does it support (need 'application/pdf'):
+(gptel--model-mimes 'gemini-1.5-pro-latest)
+(gptel--model-mimes 'gemini-2.0-flash-exp)
+(gptel--model-mimes 'claude-3-7-sonnet-20250219)
+(gptel--model-mimes 'gpt-4.1)
+;; ("image/png" "image/jpeg" "image/webp" "image/heic"
+;; "image/heif" "application/pdf" "text/plain" "text/csv"
+;; "text/html")
+
+;; whether to send supported media via chat buffers
+gptel-track-media
+
+;; I was specifically having issues sending pdfs to gemini
+;; models, but it works with the following configuration:
+(gptel-make-gemini "gtest"
+  :stream t
+  :key (auth-source-pick-first-password :host "api.google.com")
+  :models 
+  '((gemini-2.0-flash-exp
+     :description "model that accepts pdfs "
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"))
+    (gemini-pro-latest
+     :description "model that doesn't accept pdfs "
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"))))
+
+#+END_SRC
+
+* gptel Custom Commands
+
+#+BEGIN_SRC emacs-lisp 
+(defvar gptel-lookup--history nil)
+
+(defun gptel-minibuffer-prompt-buffer-insertion (prompt)
+  (interactive (list (read-string "prompt: " nil gptel-lookup--history)))
+  (when (string= prompt "") (user-error "A prompt is required."))
+  (gptel-request
+   prompt
+   :callback
+   (lambda (response info)
+     (if (not response)
+         (message "gptel-lookup failed with message: %s" (plist-get info :status))
+           (insert response)))))
 #+END_SRC

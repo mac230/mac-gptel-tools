@@ -36,9 +36,11 @@ who are the authors (names only):
 
 [[/home/mahlon/emacs/mac-gptel-tools/file_testing/test_01.pdf]]
 
+
 what does figure 1 show (1 sentence, short answer):
 
 [[/home/mahlon/emacs/mac-gptel-tools/file_testing/test_02.pdf]]
+
 
 1 sentence summary of the last paragraph in the discussion:
 
@@ -54,7 +56,6 @@ what does figure 1 show (1 sentence, short answer):
 1 sentence summary of what the following file contains:
 
 [[/home/mahlon/emacs/mac-gptel-tools/file_testing/test_01.csv]]
-
 
 1 sentence summary of where the contents of this file came from:
 
