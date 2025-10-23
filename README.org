@@ -160,26 +160,42 @@ gptel's context.  With a prefix argument, set a range of pages to cover."
 
 #+END_SRC
 
-* Prompt From and Respond Through the Minibuffer
+* Prompting From the Minibuffer
 This function prompts the user for a query and echoes a response through the
 minibuffer without having to call the gptel transient menu. 
 
 #+BEGIN_SRC emacs-lisp :results silent 
+(defvar gptel-lookup--history nil)
+
 ;; note: context added via gptel menu is not accessible using this command
-(defun gptel-send-prompt-to-minibuffer-echo-area (arg)
-  "Prompt for input, send to LLM, and display response in echo area."
-  (interactive "P")
-  (let ((prompt (read-string "Send to LLM: "))
-        (val (prefix-numeric-value arg)))
+(defun gptel-prompt-from-minibuffer-echo-message (arg)
+  "Prompt for input, send to LLM, and display response in echo area.  With a prefix arg, insert the response at point, in addition to messaging it."
+  (interactive (list (read-string "prompt: " nil gptel-lookup--history)))
+  (let ((val (prefix-numeric-value arg)))
     (gptel-request
      prompt
-     :callback (lambda (response _info)
+     :callback (lambda (response info)
                  (if (= val 1)
                      (when (stringp response)
                        (message "%s" response))
                    (when (stringp response)
-                     (insert "%s" response))
-                   )))))
+                     (progn
+                     (insert "%s" response)
+                     (message "%s" response))
+                   ))))))
+
+;; prompt from the minibuffer, insert text at point:
+(defun gptel-prompt-from-minibuffer-insert-response (prompt)
+  (interactive (list (read-string "prompt: " nil gptel-lookup--history)))
+  (when (string= prompt "") (user-error "A prompt is required."))
+  (gptel-request
+   prompt
+   :callback
+   (lambda (response info)
+     (if (not response)
+         (message "gptel-lookup failed with message: %s" (plist-get info :status))
+           (insert response)))))
+
 #+END_SRC
 
 * Reading and Analyzing Source Code
@@ -619,17 +635,5 @@ gptel-track-media
 * gptel Custom Commands
 
 #+BEGIN_SRC emacs-lisp 
-(defvar gptel-lookup--history nil)
 
-;; prompt from the minibuffer, insert text at point:
-(defun gptel-minibuffer-prompt-buffer-insertion (prompt)
-  (interactive (list (read-string "prompt: " nil gptel-lookup--history)))
-  (when (string= prompt "") (user-error "A prompt is required."))
-  (gptel-request
-   prompt
-   :callback
-   (lambda (response info)
-     (if (not response)
-         (message "gptel-lookup failed with message: %s" (plist-get info :status))
-           (insert response)))))
 #+END_SRC
