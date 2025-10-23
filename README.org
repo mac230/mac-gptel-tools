@@ -78,7 +78,8 @@ allow the user to enter queries like "@websearch, find a web link to reference
   (interactive)
   (let ((default-directory "~")
         (window-config (window-configuration-to-register ?E))
-        (pdf-buffer))
+        (pdf-buffer)
+        (pdf-page))
 
     (when (file-exists-p "/tmp/shot.png")
       (async-shell-command "rm /tmp/shot.png" nil nil)
@@ -87,13 +88,16 @@ allow the user to enter queries like "@websearch, find a web link to reference
     (dolist (w (window-list))
       (with-current-buffer (window-buffer w)
         (when (eq major-mode 'pdf-view-mode)
-          (setq pdf-buffer (current-buffer)))))
+          (setq pdf-buffer (current-buffer)
+                pdf-page (pdf-view-current-page)))))
 
     (if (not pdf-buffer)
         (message "No pdf buffer detected.")
       (progn
         (switch-to-buffer pdf-buffer)
+        (pdf-view-goto-page pdf-page)
         (delete-other-windows)
+        (sit-for 0.1)
         (start-process-shell-command "" nil
          "/usr/bin/gnome-screenshot -w -f /tmp/shot.png")
         (while (not (file-exists-p "/tmp/shot.png"))
