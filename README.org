@@ -167,22 +167,17 @@ minibuffer without having to call the gptel transient menu.
 #+BEGIN_SRC emacs-lisp :results silent 
 (defvar gptel-lookup--history nil)
 
+;; prompt from minibuffer, echo response in minibuffer
 ;; note: context added via gptel menu is not accessible using this command
-(defun gptel-prompt-from-minibuffer-echo-message (arg)
+(defun gptel-prompt-from-minibuffer-echo-message (prompt)
   "Prompt for input, send to LLM, and display response in echo area.  With a prefix arg, insert the response at point, in addition to messaging it."
   (interactive (list (read-string "prompt: " nil gptel-lookup--history)))
-  (let ((val (prefix-numeric-value arg)))
-    (gptel-request
-     prompt
-     :callback (lambda (response info)
-                 (if (= val 1)
-                     (when (stringp response)
-                       (message "%s" response))
-                   (when (stringp response)
-                     (progn
-                     (insert "%s" response)
-                     (message "%s" response))
-                   ))))))
+  (gptel-request
+   prompt
+   :callback (lambda (response info)
+               (when (stringp response)
+                 (message "%s" response))))
+  )
 
 ;; prompt from the minibuffer, insert text at point:
 (defun gptel-prompt-from-minibuffer-insert-response (prompt)
@@ -195,14 +190,13 @@ minibuffer without having to call the gptel transient menu.
      (if (not response)
          (message "gptel-lookup failed with message: %s" (plist-get info :status))
            (insert response)))))
-
 #+END_SRC
 
 * Reading and Analyzing Source Code
 I use 'etags' to find source code definitions of functions and variables.  My
 tags files are set up with the following configuration:
 
-#+BEGIN_SRC bash
+#+BEGIN_SRC bash :eval no
 ## -----
 ## setup:
 
@@ -593,7 +587,7 @@ I've had issues with certain models not send pdf content to models.  The github
 issue above has code that can diagnose why this is happening at the level of
 individual models:
 
-#+BEGIN_SRC emacs-lisp :results silent 
+#+BEGIN_SRC emacs-lisp :results silent :eval no
 
 ;; what are the model's capabilities (need media):
 (gptel--model-capabilities 'gemini-pro-latest)
