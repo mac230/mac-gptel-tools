@@ -629,5 +629,5 @@ gptel-track-media
 * gptel Custom Commands
 
 #+BEGIN_SRC emacs-lisp 
-
+(org-babel-load-file "/ssh:mac@mac:~/emacs/mac-gptel-tools/README.org")
 #+END_SRC
