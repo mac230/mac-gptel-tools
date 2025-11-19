@@ -276,15 +276,15 @@ given definition.
 
 ;; examples of testing this function:
 ;; 1. built-in elisp function:
-(provide-gptel-symbol-definition "ivy-read")
+;; (provide-gptel-symbol-definition "ivy-read")
 ;; 2. built-in C function:
-(provide-gptel-symbol-definition "find-file")
+;; (provide-gptel-symbol-definition "find-file")
 ;; 3. function with multiple xref matches
-(provide-gptel-symbol-definition "ivy-avy")
+;; (provide-gptel-symbol-definition "ivy-avy")
 ;; 4. function I wrote:
-(provide-gptel-symbol-definition "mac-pvs")
+;; (provide-gptel-symbol-definition "mac-pvs")
 ;; 5. variable:
-(provide-gptel-symbol-definition "find-function-C-source-directory")
+;; (provide-gptel-symbol-definition "find-function-C-source-directory")
 
 (gptel-make-tool
  :name "read_source_definition"
@@ -333,15 +333,15 @@ given definition.
 
 ;; examples of testing this function:
 ;; 1. built-in elisp function:
-(provide-gptel-symbol-file "ivy-read")
+;; (provide-gptel-symbol-file "ivy-read")
 ;; 2. built-in C function:
-(provide-gptel-symbol-file "find-file")
+;; (provide-gptel-symbol-file "find-file")
 ;; 3. function with multiple xref matches
-(provide-gptel-symbol-file "ivy-avy")
+;; (provide-gptel-symbol-file "ivy-avy")
 ;; 4. function I wrote:
-(provide-gptel-symbol-file "mac-pvs")
+;; (provide-gptel-symbol-file "mac-pvs")
 ;; 5. variable:
-(provide-gptel-symbol-file "find-function-C-source-directory")
+;; (provide-gptel-symbol-file "find-function-C-source-directory")
 
 (gptel-make-tool
  :name "read_source_definition_full_file"
@@ -538,7 +538,7 @@ functions from user-installed packages.
 #+END_SRC
 
 * Email
-#+BEGIN_SRC emacs-lisp 
+#+BEGIN_SRC emacs-lisp :eval no
 (with-current-buffer (get-buffer-create "test")
   (delete-region (point-min) (point-max))
   (maphash (lambda (key val)
@@ -627,7 +627,27 @@ gptel-track-media
 #+END_SRC
 
 * gptel Custom Commands
-
-#+BEGIN_SRC emacs-lisp 
+#+BEGIN_SRC emacs-lisp :eval no
+(load-file "~/.emacs.d/elpa/gptel-0.9.8.5/gptel-context.el")
 (org-babel-load-file "/ssh:mac@mac:~/emacs/mac-gptel-tools/README.org")
+(gptel-context-remove-all)
+#+END_SRC
+
+** Add a New Model
+#+BEGIN_SRC emacs-lisp :eval no
+;; basic approach - add to existing set of backends:
+(push 'gpt-5
+      (gptel-backend-models (gptel-get-backend "ChatGPT")))
+
+;; custom approach - define capabilities:
+(gptel-make-openai "gpptest"
+  :stream t
+  :key (auth-source-pick-first-password :host "api.openai.com")
+  :models 
+  '((gpt-5
+     :description "GPT5 from openai"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html")))
+  )
 #+END_SRC
