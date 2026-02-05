@@ -48,6 +48,25 @@ allow the user to enter queries like "@websearch, find a web link to reference
       (switch-to-buffer current-buffer))
     text-content))
 
+(defun insert-text-to-process ()
+  "Return the contents of the current pdf page as text."
+  (interactive)
+  (let ((current-buffer (current-buffer))
+        (current-window (selected-window))
+        (text-buffer)
+        (text-content))
+    (dolist (w (window-list))
+      (select-window w)
+      (when (eq major-mode 'pdf-view-mode)
+        (setq text-buffer (current-buffer)
+              text-content
+              (pdf-info-gettext
+               (pdf-view-current-page) '(0 0 1 1)))))
+    (select-window current-window)
+    (when (not (eq (current-buffer) current-buffer))
+      (switch-to-buffer current-buffer))
+    (insert text-content)))
+
 (gptel-make-tool
  :function #'get-text-to-process
  :name "process_supplied_text"
@@ -98,8 +117,13 @@ allow the user to enter queries like "@websearch, find a web link to reference
         (pdf-view-goto-page pdf-page)
         (delete-other-windows)
         (sit-for 0.1)
+
+        (if (eq system-type 'darwin)
+            (start-process-shell-command "" nil
+            "screencapture -T 1 /tmp/shot.png")
         (start-process-shell-command "" nil
-         "/usr/bin/gnome-screenshot -w -f /tmp/shot.png")
+         "/usr/bin/gnome-screenshot -w -f /tmp/shot.png"))
+
         (while (not (file-exists-p "/tmp/shot.png"))
           (sit-for 0.1))
         (gptel-context-add-file "/tmp/shot.png")
@@ -395,7 +419,8 @@ functions from user-installed packages.
   :tools        '("read_R_help_documentation"))
 
 ;; test prompt:
-;; read the help page for the R function "xyplot" and provide a slightly altered version of one of the plot calls
+;; @rreader read the help page for the R function "xyplot"
+;; and provide a slightly altered version of one of the plot calls
 #+END_SRC
 
 * Switching Models
@@ -427,23 +452,43 @@ functions from user-installed packages.
 #+END_SRC
 
 * org-mode
-#+BEGIN_SRC emacs-lisp 
+#+BEGIN_SRC emacs-lisp :results silent
 (defun gptel-add-buffers-headings-to-context ()
   "Look through the list of org buffers and headings and return the best buffer / heading combination that matches the user's query."
   (interactive)
   (let ((entries)
         (contents)
         (buffers)
-        (headings))
+        (headings)
+        (files '(
+               "movie-night.org"
+               "elisp_notes.org"
+               "r_notes.org"
+               "shell_notes.org"
+               "latex_notes.org"
+               "org_notes.org"
+               "figure_examples_I_like.org"
+               "degradation_papers.org"
+               "genetics_papers.org"
+               "proteomics_papers.org"
+               "genetics_papers.org"
+               "agenda.org"
+               "scratch-pad.org"
+               "writing.org"
+               )))
+
+    (when nas-ssh-connection
+      (dolist (f files)
+        (when (not (bufferp (get-buffer f)))
+          (when (file-exists-p (concat "/ssh:mac:~/emacs/org/" f))
+            (find-file-noselect (concat "/ssh:mac:~/emacs/org/" f))))
+        ))
+
     ;; (dolist (b (nthcdr 100 (reverse (buffer-list))))
     (dolist (b (mapcar
                 (lambda (arg) (get-buffer arg))
-                '(
-                  "r_notes.org"
-                  ;; "agenda.org"
-                  "latex_notes.org"
-                  ;; "shell_notes.org"
-)))
+                 files))
+
       (with-current-buffer b
         (when (and (derived-mode-p 'org-mode)
                    (not (string= (buffer-name) "time.org")))
@@ -452,19 +497,28 @@ functions from user-installed packages.
                 (nconc entries
                        (counsel-outline-candidates
                         (cdr (assq 'org-mode counsel-outline-settings))
-                        (counsel-org-goto-all--outline-path-prefix))))))
-    (dolist (e entries)
-        (setq contents (cons (substring-no-properties (car e))
-                             contents))))
-    (setq contents (reverse contents)
-          buffers (mapcar (lambda (b) (car (string-split b "/"))) contents)
-          headings (mapcar (lambda (b) (cadr (string-split b "/"))) contents))
+                        (counsel-org-goto-all--outline-path-prefix)))))))
+
+    (setq contents
+          (mapcar (lambda (e) (substring-no-properties (car e)))
+                  entries)
+          buffers
+          (mapcar (lambda (f) (buffer-name (marker-buffer (cdr f))))
+                    entries))
+
+    ;; (setq contents (reverse contents)
+    ;;       buffers (mapcar (lambda (b) (car (string-split b "/"))) contents)
+    ;;       headings (mapcar (lambda (b) (cadr (string-split b "/"))) contents))
+
     (with-current-buffer (get-buffer-create "this_test")
       (delete-region (point-min) (point-max))
-      (mapcar (lambda (c) (insert (concat c "\n"))) contents)
+      (let ((bs buffers) (cs contents))
+        (while (and bs cs)
+          (insert (format "buffer: %s header: %s\n" (car bs) (car cs)))
+          (setq bs (cdr bs) cs (cdr cs))))
       (mark-whole-buffer)
-      (gptel-context-add))
-    ))
+      (gptel-context-add)
+)))
 
 (defun gptel-switch-to-relevant-buffer-heading (buffer heading)
   "Switch to the buffer relevant to the user's query."
@@ -478,11 +532,11 @@ functions from user-installed packages.
         (goto-char (point-min))
         (re-search-forward heading nil t))
     (message (concat "not jumping to" heading ".")))
-  (gptel-context-remove-all))
+  )
 
 (gptel-make-tool
  :function #'gptel-switch-to-relevant-buffer-heading
- :name "2-get_org_buffer_and_switch_and_jump"
+ :name "get_org_heading_switch_to_buffer"
  :description "Return the org buffer and heading
                that best matches the user's query
                using the information supplied as context."
@@ -498,12 +552,12 @@ functions from user-installed packages.
 
 (gptel-context-remove-all)
 
-
 (gptel-make-preset
-    'org-finder-3
+    'org-buffer-finder2
   :description  "Help the user find buffers and headings that match a topic"
-  :tools        '("get_org_buffer_and_heading"))
+  :tools        '("get_org_heading_switch_to_buffer"))
 
+;; @org-buffer-finder2 find my notes on making pngs from R plot pdfs 
 #+END_SRC
 
 * Brave and Web Search
@@ -631,6 +685,41 @@ gptel-track-media
 (load-file "~/.emacs.d/elpa/gptel-0.9.8.5/gptel-context.el")
 (org-babel-load-file "/ssh:mac@mac:~/emacs/mac-gptel-tools/README.org")
 (gptel-context-remove-all)
+
+(push 'gpt-5.2
+      (gptel-backend-models (gptel-get-backend "ChatGPT")))
+
+(push 'gemini-pro-latest
+      (gptel-backend-models (gptel-get-backend "gemini")))
+
+(push 'gemini-flash-latest
+      (gptel-backend-models (gptel-get-backend "gemini")))
+
+(push 'gemini-flash-lite-latest
+      (gptel-backend-models (gptel-get-backend "gemini")))
+
+(with-eval-after-load 'gptel
+  (setq gptel-directives
+        (append gptel-directives
+                '(("pdf_spray_extractor" . "you will receive text that has been extracted from a pdf.  the user would like to use this text for a speed reading application.  your task is to improve the clarity of the text by removing extraneous content.  the content you will remove may include references (numbers or last names (e.g., 'collins et al.')), figure captions, journal names, journal volumes, years, page numbers, and the article title.  you are only to return the cleaned text - no 'I'll process the text for you' or 'if you provide more text I can extract more' or similar messaging - just provide the cleaned text.")))))
+
+(defun spray-get-pdf-text ()
+  "Send PROMPT using DIRECTIVE-NAME just for this call."
+  (interactive)
+  (let ((gptel--system-message
+         (cdr
+          (assoc
+           "pdf_spray_extractor"
+           gptel-directives)))
+        (prompt (get-text-to-process)))
+    (when prompt
+      (gptel-request prompt)
+      (if (yes-or-no-p "enter spray mode?")
+          (spray-mode)
+        (message "not entering spray mode")
+      ))
+    ))
+
 #+END_SRC
 
 ** Add a New Model
