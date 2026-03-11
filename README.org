@@ -35,7 +35,8 @@ allow the user to enter queries like "@websearch, find a web link to reference
   (let ((current-buffer (current-buffer))
         (current-window (selected-window))
         (text-buffer)
-        (text-content))
+        (text-content)
+)
     (dolist (w (window-list))
       (select-window w)
       (when (eq major-mode 'pdf-view-mode)
@@ -184,6 +185,79 @@ gptel's context.  With a prefix argument, set a range of pages to cover."
 
 #+END_SRC
 
+** Getting Information on References in a pdf a Popup Tooltip
+I use the following function to have emacs display the full citation for a paper
+within a pdf using 'pdf-tools' and 'gptel'.  The function prompts the user for a
+string that identifies the in-text citation.  It could be a reference number
+(e.g., "120") or name / year citation (e.g., "Collins 2020").  'pdf-tools' then
+prompts the user to pick a link to follow and sends the text on the associated
+page to a blank buffer.  That text output is fed to gptel with instructions to
+display the citation as a popup tooltip.  
+
+#+BEGIN_SRC emacs-lisp 
+(defun pop-ref-with-gptel ()
+  "Provide the title of a work referenced in a pdf using 'pdf-tools' and 'gptel'."
+  (interactive)
+  (let ((current-window (selected-window))
+        (pdf-window)
+        (pdf-buffer)
+        (pdf-page)
+        (ref-text)
+        (ref-number)
+        (link-page))
+
+    (global-data-entry-mode 1)
+    (setq ref-number (read-string "reference number: "))
+    (global-data-entry-mode -1)
+    
+    ;; find the pdf buffer in my windows:
+    (dolist (w (window-list))
+      (with-current-buffer (window-buffer w)
+        (when (eq major-mode 'pdf-view-mode)
+          (setq pdf-buffer (current-buffer)
+                pdf-window (get-buffer-window pdf-buffer)
+                pdf-page (pdf-view-current-page)))))
+
+    ;; error handling:
+    (when (not pdf-buffer)
+      (error "No pdf open!"))
+
+    ;; 
+    (select-window pdf-window)
+    ;; instead of pre-specifying a link
+    ;; just highlight all links and let me
+    ;; pick.  this requires the same amount
+    ;; of typing (two keys) and happens on
+    ;; home row instead of numbers:
+    (pdf-links-action-perform
+     (pdf-links-read-link-action "Follow link: "))
+    (setq ref-text (get-text-to-process))
+    (select-window current-window)
+
+    (with-current-buffer (get-buffer-create "ref_info")
+      (delete-region (point-min) (point-max))
+      (goto-char (point-min))
+      (insert (concat "what is reference "
+                      ref-number
+                      "\n Just the reference text, no extra content.\n"
+                      ref-text
+                      "\n"
+                      ))
+      (gptel-request (buffer-substring-no-properties (point-min) (point-max))
+        :system (funcall gptel-quick-system-message 100)
+        :context (list (buffer-substring-no-properties (point-min) (point-max))
+                       100
+                       (posn-at-point (and (use-region-p) (region-beginning))))
+        :callback #'gptel-quick--callback-posframe)
+      )
+
+    (select-window pdf-window)
+    (pdf-view-goto-page pdf-page)
+    (select-window current-window)
+
+    ))
+#+END_SRC
+
 * Prompting From the Minibuffer
 This function prompts the user for a query and echoes a response through the
 minibuffer without having to call the gptel transient menu. 
@@ -236,7 +310,8 @@ touch ~/.emacs.d/TAGS/TAGS
 cd  ~/.emacs.d/TAGS
 ## see:
 ## https://stackoverflow.com/questions/10738219/how-to-use-shell-magic-to-create-a-recursive-etags-using-gnu-etags
-find ~/.emacs.d/ -type f \( -name "*.el" -o -name "*.elc" -o -name "*.c" -o -name "*.h" \) -print | etags - -o TAGS
+find ~/.emacs.d -type f \( -name "*.el" -o -name "*.elc" -o -name "*.c" -o -name "*.h" \) -print | etags - -o TAGS
+
 #+END_SRC 
 
 With this setup, I use emacs built-in xref to find source code and provide it to
@@ -688,6 +763,9 @@ gptel-track-media
 
 (push 'gpt-5.2
       (gptel-backend-models (gptel-get-backend "ChatGPT")))
+
+(push 'claude-sonnet-4-6
+      (gptel-backend-models (gptel-get-backend "mac-claude")))
 
 (push 'gemini-pro-latest
       (gptel-backend-models (gptel-get-backend "gemini")))
