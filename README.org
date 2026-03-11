@@ -185,7 +185,7 @@ gptel's context.  With a prefix argument, set a range of pages to cover."
 
 #+END_SRC
 
-** Getting Information on References in a pdf a Popup Tooltip
+** Getting Information on References in a pdf as a Popup Tooltip
 I use the following function to have emacs display the full citation for a paper
 within a pdf using 'pdf-tools' and 'gptel'.  The function prompts the user for a
 string that identifies the in-text citation.  It could be a reference number
