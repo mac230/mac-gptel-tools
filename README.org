@@ -753,6 +753,27 @@ gptel-track-media
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html"))))
 
+(gptel-make-anthropic "ctest"
+  :stream t
+  :key (auth-source-pick-first-password :host "api.anthropic.com")
+  :models 
+  '((claude-sonnet-4-6
+     :description "model that accepts pdfs "
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"))))
+
+
+(gptel-make-openai "otest"
+  :stream t
+  :key (auth-source-pick-first-password :host "api.openai.com")
+  :models 
+  '((gpt-5.2
+     :description "model that accepts pdfs "
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"))))
+
 #+END_SRC
 
 * gptel Custom Commands
@@ -818,3 +839,65 @@ gptel-track-media
                   "application/pdf" "text/plain" "text/csv" "text/html")))
   )
 #+END_SRC
+
+* System Prompts
+** chatgpt-shell-system-prompt
+#+BEGIN_SRC emacs-lisp 
+;; the set of available system prompts can be seen here:
+;; or just describe the variable 'chatgpt-shell-system-prompts':
+(princ chatgpt-shell-system-prompts (current-buffer))
+
+;; ((mac default . you are a helpful assistant who responds concisely (no sure I'll look that up or similar).  you'll be asked to provide mathematical formulas.  when you do so, you are not to use latex, just regular fonts / symbols))
+
+;; here's the original value:
+;; (("tl;dr" .
+;;   "Be as succint but informative as possible and respond in tl;dr form to my queries")
+;;  ("General" .
+;;   "You use markdown liberally to structure responses.
+;;   Always show code snippets in markdown blocks with language labels.")
+;;  ("Programming" . "The user is a programmer with very limited time.
+;;                         You treat their time as precious. You do not repeat obvious
+;;                         things, including their query.
+;;                         You are as concise as possible in responses.
+
+;; you can add your own prompt as follows:
+(add-to-list 'chatgpt-shell-system-prompts
+             '("mac default" . "you are a helpful assistant who responds
+               concisely (so don't waste the user's time with responses like
+               'sure I'll look that up' or similar).
+               you'll be asked to provide mathematical formulas.
+               when you do so, you are not to use latex, just plain-text symbols.
+               Be as concise as possible in responses.
+               don't use aggressive markdown formatting
+               (e.g., excessive bolding).  The user is working in emacs and relies
+               on org-mode so format accordingly and wrap code in emacs org-mode blocks.
+               Don't use org-mode headings or boldings (they're distracting), instead use
+               structured text heading styles that incorporate '-', '/', etc..."
+))
+
+;; then, select it with:
+;; M-x chatgpt-shell-swap-system-prompt
+
+;; note that calling the 'chatgpt-shell-load-awesome-prompts' adds > 60e3
+;; prompts as of 2026.04.15 and massively slows down chatgpt-shell.  if
+;; load these by mistake, you can set 'chatgpt-shell-system-prompts' to nil
+;; and start over again, which seems to resolve the issue
+#+END_SRC
+
+** gptel System Prompt
+#+BEGIN_SRC emacs-lisp 
+(setq gptel--system-message
+      "You are a large language model living in Emacs and a helpful assistant. 
+      You are a helpful assistant who responds
+      concisely (so don't waste the user's time with responses like
+      'sure I'll look that up' or similar).
+      you'll be asked to provide mathematical formulas.
+      when you do so, you are not to use latex, just plain-text symbols.
+      Be as concise as possible in responses.
+      don't use aggressive markdown formatting
+      (e.g., excessive bolding).  The user is working in emacs and relies
+      on org-mode so format accordingly and wrap code in emacs org-mode blocks.
+      Don't use org-mode headings or boldings (they're distracting), instead use
+      structured text heading styles that incorporate '-', '/', etc...")
+#+END_SRC
+
