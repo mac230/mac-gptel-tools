@@ -782,14 +782,26 @@ gptel-track-media
 (org-babel-load-file "/ssh:mac@mac:~/emacs/mac-gptel-tools/README.org")
 (gptel-context-remove-all)
 
-(push 'gpt-5.2
-      (gptel-backend-models (gptel-get-backend "ChatGPT")))
+;; -----
+;; add latest claude models:
 
-(push 'claude-sonnet-4-6
-      (gptel-backend-models (gptel-get-backend "mac-claude")))
+;; 1. opus (most powerful):
+(cl-pushnew 'claude-opus-4-7
+            (gptel-backend-models
+             (gptel-get-backend "mac-claude")))
 
-(push 'gemini-pro-latest
-      (gptel-backend-models (gptel-get-backend "gemini")))
+;; 2. sonnet (balance speed / power): 
+(cl-pushnew 'claude-sonnet-4-6
+            (gptel-backend-models
+             (gptel-get-backend "mac-claude")))
+
+;; 3. haiku (fastest):
+(cl-pushnew 'claude-haiku-4-5
+            (gptel-backend-models
+             (gptel-get-backend "mac-claude")))
+
+;; (push 'gpt-5.2
+;;       (gptel-backend-models (gptel-get-backend "ChatGPT")))
 
 (push 'gemini-flash-latest
       (gptel-backend-models (gptel-get-backend "gemini")))
@@ -838,6 +850,54 @@ gptel-track-media
      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
                   "application/pdf" "text/plain" "text/csv" "text/html")))
   )
+#+END_SRC
+
+* Adding New Models
+** gptel: Adding New Models to gptel
+#+BEGIN_SRC emacs-lisp :results silent 
+;; the following adds a new model to a backend
+;; if it isn't there already:
+(cl-pushnew 'claude-opus-4-7
+            (gptel-backend-models
+             (gptel-get-backend "mac-claude")))
+
+#+END_SRC
+
+** chatGPT-shell: Adding New Models to chatGPT-shell
+#+BEGIN_SRC emacs-lisp 
+;; have to do this on a per-provider basis:
+(cl-pushnew (chatgpt-shell-anthropic--make-model
+              :version "claude-opus-4-7"
+              :short-version "opus-4.7"
+              :token-width 4
+              :thinking-budget-min 1024
+              :reasoning-effort-selector
+              #'chatgpt-shell-anthropic-reasoning-effort-selector
+              :max-tokens 50000
+              :context-window 200000)
+            chatgpt-shell-models)
+
+(cl-pushnew (chatgpt-shell-anthropic--make-model
+              :version "claude-sonnet-4-6"
+              :short-version "sonnet-4.6"
+              :token-width 4
+              :thinking-budget-min 1024
+              :reasoning-effort-selector
+              #'chatgpt-shell-anthropic-reasoning-effort-selector
+              :max-tokens 50000
+              :context-window 200000)
+            chatgpt-shell-models)
+
+(cl-pushnew (chatgpt-shell-anthropic--make-model
+              :version "claude-haiku-4-5"
+              :short-version "sonnet-4.5"
+              :token-width 4
+              :thinking-budget-min 1024
+              :reasoning-effort-selector
+              #'chatgpt-shell-anthropic-reasoning-effort-selector
+              :max-tokens 50000
+              :context-window 200000)
+            chatgpt-shell-models)
 #+END_SRC
 
 * System Prompts
