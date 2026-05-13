@@ -781,6 +781,8 @@ gptel-track-media
 (load-file "~/.emacs.d/elpa/gptel-0.9.8.5/gptel-context.el")
 (org-babel-load-file "/ssh:mac@mac:~/emacs/mac-gptel-tools/README.org")
 (gptel-context-remove-all)
+(setq gptel-quick-backend (gptel-get-backend "mac-claude")
+      gptel-quick-model 'claude-haiku-4-5)
 
 ;; -----
 ;; add latest claude models:
