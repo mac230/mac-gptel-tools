@@ -781,7 +781,7 @@ gptel-track-media
 (load-file "~/.emacs.d/elpa/gptel-0.9.8.5/gptel-context.el")
 (org-babel-load-file "/ssh:mac@mac:~/emacs/mac-gptel-tools/README.org")
 (gptel-context-remove-all)
-(setq gptel-quick-backend (gptel-get-backend "mac-claude")
+(setq gptel-quick-backend (gptel-get-backend "ctest")
       gptel-quick-model 'claude-haiku-4-5)
 
 ;; -----
@@ -835,42 +835,65 @@ gptel-track-media
 
 #+END_SRC
 
-** Add a New Model
-#+BEGIN_SRC emacs-lisp :eval no
-;; basic approach - add to existing set of backends:
-(push 'gpt-5
-      (gptel-backend-models (gptel-get-backend "ChatGPT")))
-
-;; custom approach - define capabilities:
-(gptel-make-openai "gpptest"
-  :stream t
-  :key (auth-source-pick-first-password :host "api.openai.com")
-  :models 
-  '((gpt-5
-     :description "GPT5 from openai"
-     :capabilities (tool-use json media)
-     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
-                  "application/pdf" "text/plain" "text/csv" "text/html")))
-  )
-#+END_SRC
-
 * Adding New Models
 ** gptel: Adding New Models to gptel
 #+BEGIN_SRC emacs-lisp :results silent 
+;; want to do it this way so the capabilities,
+;; esp. reading pdfs get added to each model.
+(gptel-make-anthropic "ctest"
+  :stream t
+  :key (auth-source-pick-first-password :host "api.anthropic.com")
+  :models 
+  '((claude-opus-4-7
+     :description "most powerful claude model"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"))
+    (claude-opus-4-8
+     :description "most powerful claude model"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"))
+    (claude-sonnet-4-6
+     :description "speed / power balance claude model"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"))
+    (claude-haiku-4-5
+     :description "fastest claude model"
+     :capabilities (tool-use json media)
+     :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+                  "application/pdf" "text/plain" "text/csv" "text/html"))))
+
 ;; the following adds a new model to a backend
 ;; if it isn't there already:
-(cl-pushnew 'claude-opus-4-7
-            (gptel-backend-models
-             (gptel-get-backend "mac-claude")))
+;; (cl-pushnew '(claude-opus-4-7
+;;      :description "most powerful claude model"
+;;      :capabilities (tool-use json media)
+;;      :mime-types ("image/png" "image/jpeg" "image/webp" "image/heic" "image/heif"
+;;                   "application/pdf" "text/plain" "text/csv" "text/html"))
+;;             (gptel-backend-models
+;;              (gptel-get-backend "ctest")))
 
 #+END_SRC
 
 ** chatGPT-shell: Adding New Models to chatGPT-shell
-#+BEGIN_SRC emacs-lisp 
+#+BEGIN_SRC emacs-lisp :results silent 
 ;; have to do this on a per-provider basis:
 (cl-pushnew (chatgpt-shell-anthropic--make-model
               :version "claude-opus-4-7"
               :short-version "opus-4.7"
+              :token-width 4
+              :thinking-budget-min 1024
+              :reasoning-effort-selector
+              #'chatgpt-shell-anthropic-reasoning-effort-selector
+              :max-tokens 50000
+              :context-window 200000)
+            chatgpt-shell-models)
+
+(cl-pushnew (chatgpt-shell-anthropic--make-model
+              :version "claude-opus-4-8"
+              :short-version "opus-4.8"
               :token-width 4
               :thinking-budget-min 1024
               :reasoning-effort-selector
@@ -904,10 +927,10 @@ gptel-track-media
 
 * System Prompts
 ** chatgpt-shell-system-prompt
-#+BEGIN_SRC emacs-lisp 
+#+BEGIN_SRC emacs-lisp :results silent 
 ;; the set of available system prompts can be seen here:
 ;; or just describe the variable 'chatgpt-shell-system-prompts':
-(princ chatgpt-shell-system-prompts (current-buffer))
+;; (princ chatgpt-shell-system-prompts (current-buffer))
 
 ;; ((mac default . you are a helpful assistant who responds concisely (no sure I'll look that up or similar).  you'll be asked to provide mathematical formulas.  when you do so, you are not to use latex, just regular fonts / symbols))
 
@@ -946,8 +969,8 @@ gptel-track-media
 ;; and start over again, which seems to resolve the issue
 #+END_SRC
 
-** gptel System Prompt
-#+BEGIN_SRC emacs-lisp 
+** gptel System Prompt and Re-Write Directives
+#+BEGIN_SRC emacs-lisp :results silent 
 (setq gptel--system-message
       "You are a large language model living in Emacs and a helpful assistant. 
       You are a helpful assistant who responds
@@ -961,5 +984,9 @@ gptel-track-media
       on org-mode so format accordingly and wrap code in emacs org-mode blocks.
       Don't use org-mode headings or boldings (they're distracting), instead use
       structured text heading styles that incorporate '-', '/', etc...")
+
+(setf (alist-get 'rewrite gptel-directives)
+      "Fix typos, capitalization errors, punctuation errors and always leave two spaces after periods")
+
 #+END_SRC
 
