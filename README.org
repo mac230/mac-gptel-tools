@@ -781,8 +781,19 @@ gptel-track-media
 (load-file "~/.emacs.d/elpa/gptel-0.9.8.5/gptel-context.el")
 (org-babel-load-file "/ssh:mac@mac:~/emacs/mac-gptel-tools/README.org")
 (gptel-context-remove-all)
+
+(let ((qfile "/ssh:mac@mac:~/emacs/mac-gptel-tools/mac-gptel-quick.el"))
+  (when (file-exists-p qfile)
+    (load-file qfile)
+    (message "loaded your gptel-quick version")
+    ))
+
+
 (setq gptel-quick-backend (gptel-get-backend "ctest")
-      gptel-quick-model 'claude-haiku-4-5)
+      gptel-quick-model 'claude-haiku-4-5
+      ;; have the response stay longer than default of 10
+      gptel-quick-timeout 20)
+
 
 ;; -----
 ;; add latest claude models:
