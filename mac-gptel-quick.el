@@ -80,9 +80,9 @@ one argument, the desired word count -- see
 WARNING: This variable is experimental and the calling convention is
 subject to change in the future.")
 
-(defvar gptel-quick-word-count 12
+(defvar gptel-quick-word-count 50
   "Approximate word count of LLM summary.")
-(defvar gptel-quick-timeout 10
+(defvar gptel-quick-timeout 40
   "Time in seconds before dismissing the summary.")
 (defvar gptel-quick-use-context nil
   "Whether to use gptel's active context.
@@ -112,13 +112,13 @@ word count of the response."
            (mapconcat #'identity (pdf-view-active-region-text) "\n\n"))
           (t (thing-at-point 'sexp)))
          current-prefix-arg))
-
+  (when (region-active-p) (deactivate-mark))
   (when (xor gptel-quick-backend gptel-quick-model)
     (error "gptel-quick-backend and gptel-quick-model must be both set or unset"))
 
   (let* ((count (or count gptel-quick-word-count))
          (gptel-max-tokens (floor (+ (sqrt (length query-text))
-                                     (* count 2.5))))
+                                     (* count 5))))
          (gptel-use-curl)
          (gptel-use-context (and gptel-quick-use-context 'system))
          (gptel-backend (or gptel-quick-backend gptel-backend))
@@ -207,9 +207,11 @@ quick actions on the popup."
                        :poshandler poshandler
                        :left-fringe 8
                        :right-fringe 8
-                       :min-width 36
+                       :min-width 80
                        :max-width fill-column
-                       :min-height 1
+                       :min-height 40
+                       :max-height 100
+                       :background-color "lightcyan1"
                        :timeout gptel-quick-timeout))
     (message response)))
 
